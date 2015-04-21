@@ -16,4 +16,5 @@ type SubjectNode interface {
 	Text() string
 	Flag() types.FlagType
 	Samples() int
+	Index() int
 }

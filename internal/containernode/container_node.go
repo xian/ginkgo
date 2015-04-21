@@ -30,16 +30,20 @@ type ContainerNode struct {
 	text         string
 	flag         types.FlagType
 	codeLocation types.CodeLocation
+	coords       []int
+	rerunFunc    func([]int, int) ([]*ContainerNode, leafnodes.SubjectNode)
 
 	setupNodes               []leafnodes.BasicNode
 	subjectAndContainerNodes []subjectOrContainerNode
 }
 
-func New(text string, flag types.FlagType, codeLocation types.CodeLocation) *ContainerNode {
+func New(text string, flag types.FlagType, codeLocation types.CodeLocation, coords []int, rerunFunc func([]int, int) ([]*ContainerNode, leafnodes.SubjectNode)) *ContainerNode {
 	return &ContainerNode{
 		text:         text,
 		flag:         flag,
 		codeLocation: codeLocation,
+		coords:       coords,
+		rerunFunc:    rerunFunc,
 	}
 }
 
@@ -148,4 +152,8 @@ func (node *ContainerNode) Less(i, j int) bool {
 
 func (node *ContainerNode) Swap(i, j int) {
 	node.subjectAndContainerNodes[i], node.subjectAndContainerNodes[j] = node.subjectAndContainerNodes[j], node.subjectAndContainerNodes[i]
+}
+
+func (node *ContainerNode) Rerun(target *ContainerNode, itIndex int) ([]*ContainerNode, leafnodes.SubjectNode) {
+	return node.rerunFunc(target.coords, itIndex)
 }

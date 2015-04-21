@@ -512,6 +512,16 @@ func AfterEach(body interface{}, timeout ...float64) bool {
 	return true
 }
 
+func Let(fn func() interface{}) func() interface{} {
+	var storage interface{}
+	memoized := false
+	if !memoized {
+		storage = fn()
+		memoized = true
+	}
+	return func() interface{} { return storage }
+}
+
 func parseTimeout(timeout ...float64) time.Duration {
 	if len(timeout) == 0 {
 		return time.Duration(defaultTimeout * int64(time.Second))

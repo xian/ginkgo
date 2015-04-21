@@ -8,6 +8,7 @@ import (
 	"github.com/onsi/ginkgo/internal/containernode"
 	"github.com/onsi/ginkgo/internal/leafnodes"
 	"github.com/onsi/ginkgo/types"
+	"os"
 )
 
 type Spec struct {
@@ -128,9 +129,17 @@ func (spec *Spec) runSample(sample int, writer io.Writer) (specState types.SpecS
 	specFailure = types.SpecFailure{}
 	innerMostContainerIndexToUnwind := -1
 
+	println("Regenerate containers for " + spec.ConcatenatedString() + "...")
+	lastContainer := spec.containers[len(spec.containers) - 1]
+	fmt.Fprintf(os.Stderr, "  -> Regenerating starting from %s for [%s]\n", spec.containers[1].Text(), lastContainer.Text())
+	fmt.Fprintf(os.Stderr, "container looks like %#v\n", lastContainer)
+	containers, subject := spec.containers[1].Rerun(lastContainer, spec.subject.Index())
+	println("Looks like we found containers and subject for " + subject.Text())
+	os.Stderr.Sync()
+
 	defer func() {
 		for i := innerMostContainerIndexToUnwind; i >= 0; i-- {
-			container := spec.containers[i]
+			container := containers[i]
 			for _, afterEach := range container.SetupNodesOfType(types.SpecComponentTypeAfterEach) {
 				spec.announceSetupNode(writer, "AfterEach", container, afterEach)
 				afterEachState, afterEachFailure := afterEach.Run()
@@ -142,7 +151,7 @@ func (spec *Spec) runSample(sample int, writer io.Writer) (specState types.SpecS
 		}
 	}()
 
-	for i, container := range spec.containers {
+	for i, container := range containers {
 		innerMostContainerIndexToUnwind = i
 		for _, beforeEach := range container.SetupNodesOfType(types.SpecComponentTypeBeforeEach) {
 			spec.announceSetupNode(writer, "BeforeEach", container, beforeEach)
@@ -153,7 +162,7 @@ func (spec *Spec) runSample(sample int, writer io.Writer) (specState types.SpecS
 		}
 	}
 
-	for _, container := range spec.containers {
+	for _, container := range containers {
 		for _, justBeforeEach := range container.SetupNodesOfType(types.SpecComponentTypeJustBeforeEach) {
 			spec.announceSetupNode(writer, "JustBeforeEach", container, justBeforeEach)
 			specState, specFailure = justBeforeEach.Run()
@@ -164,7 +173,7 @@ func (spec *Spec) runSample(sample int, writer io.Writer) (specState types.SpecS
 	}
 
 	spec.announceSubject(writer, spec.subject)
-	specState, specFailure = spec.subject.Run()
+	specState, specFailure = subject.Run()
 
 	return
 }

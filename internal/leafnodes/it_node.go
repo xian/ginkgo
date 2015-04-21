@@ -11,13 +11,15 @@ type ItNode struct {
 
 	flag types.FlagType
 	text string
+	index int
 }
 
-func NewItNode(text string, body interface{}, flag types.FlagType, codeLocation types.CodeLocation, timeout time.Duration, failer *failer.Failer, componentIndex int) *ItNode {
+func NewItNode(text string, body interface{}, flag types.FlagType, codeLocation types.CodeLocation, timeout time.Duration, failer *failer.Failer, componentIndex int, index int) *ItNode {
 	return &ItNode{
 		runner: newRunner(body, codeLocation, timeout, failer, types.SpecComponentTypeIt, componentIndex),
 		flag:   flag,
 		text:   text,
+		index:  index,
 	}
 }
 
@@ -43,4 +45,8 @@ func (node *ItNode) CodeLocation() types.CodeLocation {
 
 func (node *ItNode) Samples() int {
 	return 1
+}
+
+func (node *ItNode) Index() int {
+	return node.index
 }

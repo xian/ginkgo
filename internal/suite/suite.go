@@ -3,6 +3,8 @@ package suite
 import (
 	"math/rand"
 	"time"
+	"fmt"
+	"os"
 
 	"github.com/onsi/ginkgo/config"
 	"github.com/onsi/ginkgo/internal/containernode"
@@ -28,16 +30,22 @@ type Suite struct {
 	runner            *specrunner.SpecRunner
 	failer            *failer.Failer
 	running           bool
+	currentContainerCoords      []int
+	currentIndex    int
+	seekingContainerCoords *[]int
+	seekingItIndex    int
+	foundCollated     *containernode.CollatedNodes
 }
 
 func New(failer *failer.Failer) *Suite {
-	topLevelContainer := containernode.New("[Top Level]", types.FlagTypeNone, types.CodeLocation{})
+	topLevelContainer := containernode.New("[Top Level]", types.FlagTypeNone, types.CodeLocation{}, []int{0}, nil)
 
 	return &Suite{
 		topLevelContainer: topLevelContainer,
 		currentContainer:  topLevelContainer,
 		failer:            failer,
 		containerIndex:    1,
+		currentContainerCoords:      make([]int, 0, 10),
 	}
 }
 
@@ -121,25 +129,130 @@ func (suite *Suite) SetSynchronizedAfterSuiteNode(bodyA interface{}, bodyB inter
 	suite.afterSuiteNode = leafnodes.NewSynchronizedAfterSuiteNode(bodyA, bodyB, codeLocation, timeout, suite.failer)
 }
 
+func startsWith(data []int, prefix []int) bool {
+	if len(data) < len(prefix) {
+		return false
+	}
+
+	for i := range prefix {
+		if data[i] != prefix[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+func equals(dataA []int, dataB []int) bool {
+	if len(dataA) != len(dataB) {
+		return false
+	}
+
+	return startsWith(dataA, dataB)
+}
+
 func (suite *Suite) PushContainerNode(text string, body func(), flag types.FlagType, codeLocation types.CodeLocation) {
-	container := containernode.New(text, flag, codeLocation)
-	suite.currentContainer.PushContainerNode(container)
+	if suite.foundCollated != nil {
+		println("Done!")
+		return
+	}
 
-	previousContainer := suite.currentContainer
-	suite.currentContainer = container
-	suite.containerIndex++
+	rerunFunc := func(targetCoords []int, itIndex int) ([]*containernode.ContainerNode, leafnodes.SubjectNode) {
+		fmt.Fprintf(os.Stderr, "regenerating context for %s with coords %#v %d\n", text, targetCoords, itIndex)
+		suite.topLevelContainer = containernode.New("[Fake Top Leve]", types.FlagTypeNone, types.CodeLocation{}, []int{0}, nil)
+		suite.currentContainer = suite.topLevelContainer
+		suite.currentContainerCoords = make([]int, 1, 10)
+		suite.currentContainerCoords[0] = targetCoords[0]
+		fmt.Fprintf(os.Stderr, "    so far we are at %#v\n", suite.currentContainerCoords)
+		suite.currentIndex = 0
+		suite.seekingContainerCoords = &targetCoords
+		suite.seekingItIndex = itIndex
+		suite.running = false
+		body()
+		suite.running = true
+		suite.seekingContainerCoords = nil
+		os.Stdout.Sync()
+		if suite.foundCollated == nil {
+			fmt.Fprintf(os.Stderr, "   ***** no subject found for coords %#v %d\n", targetCoords, itIndex)
 
-	body()
+			os.Stderr.Sync()
+			panic("No subject found for " + text + "!")
+		}
+		fc := suite.foundCollated
+		suite.foundCollated = nil
+		return fc.Containers, fc.Subject
+	}
 
-	suite.containerIndex--
-	suite.currentContainer = previousContainer
+	thisContainerCoords := make([]int, len(suite.currentContainerCoords) + 1)
+	copy(thisContainerCoords, suite.currentContainerCoords)
+	thisContainerCoords[len(suite.currentContainerCoords)] = suite.currentIndex
+
+	if suite.seekingContainerCoords == nil || startsWith(*suite.seekingContainerCoords, thisContainerCoords) {
+		priorItIndex := suite.currentIndex
+
+		suite.currentContainerCoords = append(suite.currentContainerCoords, suite.currentIndex)
+		suite.currentIndex = 0
+
+		fmt.Fprintf(os.Stderr, "Coords for %s are %#v, which starts with %#v\n", text, thisContainerCoords, suite.seekingContainerCoords)
+		container := containernode.New(text, flag, codeLocation, thisContainerCoords, rerunFunc)
+		suite.currentContainer.PushContainerNode(container)
+
+		previousContainer := suite.currentContainer
+		suite.currentContainer = container
+		suite.containerIndex++
+
+		body()
+
+		suite.containerIndex--
+		suite.currentContainer = previousContainer
+		suite.currentIndex = priorItIndex
+		suite.currentContainerCoords = suite.currentContainerCoords[:len(suite.currentContainerCoords) - 1]
+	} else {
+		if suite.seekingContainerCoords != nil {
+			fmt.Fprintf(os.Stderr, "Skipping %s because it doesn't seem to match the sought container coords; %#v doesn't start with %#v\n", text, suite.seekingContainerCoords, suite.currentContainerCoords)
+		}
+	}
+
+	suite.currentIndex += 1
 }
 
 func (suite *Suite) PushItNode(text string, body interface{}, flag types.FlagType, codeLocation types.CodeLocation, timeout time.Duration) {
+	if suite.foundCollated != nil {
+		println("Done!")
+		return
+	}
+
 	if suite.running {
 		suite.failer.Fail("You may only call It from within a Describe or Context", codeLocation)
 	}
-	suite.currentContainer.PushSubjectNode(leafnodes.NewItNode(text, body, flag, codeLocation, timeout, suite.failer, suite.containerIndex))
+
+	fmt.Fprintf(os.Stderr, "  Coords for %s are %#v %d\n", text, suite.currentContainerCoords, suite.currentIndex)
+
+	if suite.seekingContainerCoords != nil {
+		fmt.Fprintf(os.Stderr, "Comparing %#v to %#v\n", suite.currentContainerCoords, suite.seekingContainerCoords)
+	}
+
+	itMatches := suite.seekingContainerCoords == nil || equals(suite.currentContainerCoords, *suite.seekingContainerCoords) && suite.currentIndex == suite.seekingItIndex
+
+	if itMatches {
+		suite.currentContainer.PushSubjectNode(leafnodes.NewItNode(text, body, flag, codeLocation, timeout, suite.failer, suite.containerIndex, suite.currentIndex))
+
+		if suite.seekingContainerCoords != nil {
+			println("Found It!!!!!!!!!!!!!!!!!!!!!!!!!!!!! " + text)
+
+			collatedNodes := suite.topLevelContainer.Collate()
+			fmt.Fprintf(os.Stderr, "Found it, and it has %d nodes\n", len(collatedNodes))
+			for _, n := range collatedNodes {
+				println("subject is " + n.Subject.Text())
+			}
+			if len(collatedNodes) != 1 {
+				panic("wha?!?!?!")
+			}
+			suite.foundCollated = &collatedNodes[0]
+		}
+	}
+
+	suite.currentIndex += 1
 }
 
 func (suite *Suite) PushMeasureNode(text string, body interface{}, flag types.FlagType, codeLocation types.CodeLocation, samples int) {

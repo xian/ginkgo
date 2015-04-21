@@ -59,3 +59,7 @@ func (node *MeasureNode) CodeLocation() types.CodeLocation {
 func (node *MeasureNode) Samples() int {
 	return node.samples
 }
+
+func (node *MeasureNode) Index() int {
+	return -1
+}
