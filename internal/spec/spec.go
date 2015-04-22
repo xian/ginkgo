@@ -8,7 +8,6 @@ import (
 	"github.com/onsi/ginkgo/internal/containernode"
 	"github.com/onsi/ginkgo/internal/leafnodes"
 	"github.com/onsi/ginkgo/types"
-	"os"
 )
 
 type Spec struct {
@@ -129,13 +128,8 @@ func (spec *Spec) runSample(sample int, writer io.Writer) (specState types.SpecS
 	specFailure = types.SpecFailure{}
 	innerMostContainerIndexToUnwind := -1
 
-	println("Regenerate containers for " + spec.ConcatenatedString() + "...")
 	lastContainer := spec.containers[len(spec.containers) - 1]
-	fmt.Fprintf(os.Stderr, "  -> Regenerating starting from %s for [%s]\n", spec.containers[1].Text(), lastContainer.Text())
-	fmt.Fprintf(os.Stderr, "container looks like %#v\n", lastContainer)
 	containers, subject := spec.containers[1].Rerun(lastContainer, spec.subject.Index())
-	println("Looks like we found containers and subject for " + subject.Text())
-	os.Stderr.Sync()
 
 	defer func() {
 		for i := innerMostContainerIndexToUnwind; i >= 0; i-- {

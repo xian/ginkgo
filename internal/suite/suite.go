@@ -3,8 +3,6 @@ package suite
 import (
 	"math/rand"
 	"time"
-	"fmt"
-	"os"
 
 	"github.com/onsi/ginkgo/config"
 	"github.com/onsi/ginkgo/internal/containernode"
@@ -153,17 +151,14 @@ func equals(dataA []int, dataB []int) bool {
 
 func (suite *Suite) PushContainerNode(text string, body func(), flag types.FlagType, codeLocation types.CodeLocation) {
 	if suite.foundCollated != nil {
-		println("Done!")
 		return
 	}
 
 	rerunFunc := func(targetCoords []int, itIndex int) ([]*containernode.ContainerNode, leafnodes.SubjectNode) {
-		fmt.Fprintf(os.Stderr, "regenerating context for %s with coords %#v %d\n", text, targetCoords, itIndex)
 		suite.topLevelContainer = containernode.New("[Fake Top Leve]", types.FlagTypeNone, types.CodeLocation{}, []int{0}, nil)
 		suite.currentContainer = suite.topLevelContainer
 		suite.currentContainerCoords = make([]int, 1, 10)
 		suite.currentContainerCoords[0] = targetCoords[0]
-		fmt.Fprintf(os.Stderr, "    so far we are at %#v\n", suite.currentContainerCoords)
 		suite.currentIndex = 0
 		suite.seekingContainerCoords = &targetCoords
 		suite.seekingItIndex = itIndex
@@ -171,13 +166,6 @@ func (suite *Suite) PushContainerNode(text string, body func(), flag types.FlagT
 		body()
 		suite.running = true
 		suite.seekingContainerCoords = nil
-		os.Stdout.Sync()
-		if suite.foundCollated == nil {
-			fmt.Fprintf(os.Stderr, "   ***** no subject found for coords %#v %d\n", targetCoords, itIndex)
-
-			os.Stderr.Sync()
-			panic("No subject found for " + text + "!")
-		}
 		fc := suite.foundCollated
 		suite.foundCollated = nil
 		return fc.Containers, fc.Subject
@@ -193,7 +181,6 @@ func (suite *Suite) PushContainerNode(text string, body func(), flag types.FlagT
 		suite.currentContainerCoords = append(suite.currentContainerCoords, suite.currentIndex)
 		suite.currentIndex = 0
 
-		fmt.Fprintf(os.Stderr, "Coords for %s are %#v, which starts with %#v\n", text, thisContainerCoords, suite.seekingContainerCoords)
 		container := containernode.New(text, flag, codeLocation, thisContainerCoords, rerunFunc)
 		suite.currentContainer.PushContainerNode(container)
 
@@ -209,7 +196,6 @@ func (suite *Suite) PushContainerNode(text string, body func(), flag types.FlagT
 		suite.currentContainerCoords = suite.currentContainerCoords[:len(suite.currentContainerCoords) - 1]
 	} else {
 		if suite.seekingContainerCoords != nil {
-			fmt.Fprintf(os.Stderr, "Skipping %s because it doesn't seem to match the sought container coords; %#v doesn't start with %#v\n", text, suite.seekingContainerCoords, suite.currentContainerCoords)
 		}
 	}
 
@@ -218,7 +204,6 @@ func (suite *Suite) PushContainerNode(text string, body func(), flag types.FlagT
 
 func (suite *Suite) PushItNode(text string, body interface{}, flag types.FlagType, codeLocation types.CodeLocation, timeout time.Duration) {
 	if suite.foundCollated != nil {
-		println("Done!")
 		return
 	}
 
@@ -226,10 +211,8 @@ func (suite *Suite) PushItNode(text string, body interface{}, flag types.FlagTyp
 		suite.failer.Fail("You may only call It from within a Describe or Context", codeLocation)
 	}
 
-	fmt.Fprintf(os.Stderr, "  Coords for %s are %#v %d\n", text, suite.currentContainerCoords, suite.currentIndex)
 
 	if suite.seekingContainerCoords != nil {
-		fmt.Fprintf(os.Stderr, "Comparing %#v to %#v\n", suite.currentContainerCoords, suite.seekingContainerCoords)
 	}
 
 	itMatches := suite.seekingContainerCoords == nil || equals(suite.currentContainerCoords, *suite.seekingContainerCoords) && suite.currentIndex == suite.seekingItIndex
@@ -238,13 +221,8 @@ func (suite *Suite) PushItNode(text string, body interface{}, flag types.FlagTyp
 		suite.currentContainer.PushSubjectNode(leafnodes.NewItNode(text, body, flag, codeLocation, timeout, suite.failer, suite.containerIndex, suite.currentIndex))
 
 		if suite.seekingContainerCoords != nil {
-			println("Found It!!!!!!!!!!!!!!!!!!!!!!!!!!!!! " + text)
 
 			collatedNodes := suite.topLevelContainer.Collate()
-			fmt.Fprintf(os.Stderr, "Found it, and it has %d nodes\n", len(collatedNodes))
-			for _, n := range collatedNodes {
-				println("subject is " + n.Subject.Text())
-			}
 			if len(collatedNodes) != 1 {
 				panic("wha?!?!?!")
 			}
